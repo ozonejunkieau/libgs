@@ -1,3 +1,4 @@
-git+https://bitbucket.unswcanberraspace.com/scm/adfags/libgs_ops.git#egg=libgs_ops
+libgs_ops
 -e ../
 sphinx
+sphinx_rtd_theme
