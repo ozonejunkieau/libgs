@@ -14,3 +14,5 @@ docs/build/
 *.pyc
 
 *_pycache*
+
+_autosummary/
