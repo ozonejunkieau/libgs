@@ -1,0 +1,3 @@
+git+https://bitbucket.unswcanberraspace.com/scm/adfags/libgs_ops.git#egg=libgs_ops
+-e ../
+sphinx
