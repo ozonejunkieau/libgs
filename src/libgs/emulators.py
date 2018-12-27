@@ -30,13 +30,17 @@
     UNSW is a trademark of The University of New South Wales.
 
 
-:date: Created on Wed Jun 14 12:32:08 2017
+libgs.emulators
+===============
+
+:date: Wed Jun 14 12:32:08 2017
+:author: kjetil
+
 
 This module implements emulation routines - mostly against hardware -
 for testing the libgs library whennot connected
 to the hardware
 
-@author: kjetil
 """
 
 

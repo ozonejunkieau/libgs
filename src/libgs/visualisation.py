@@ -30,12 +30,15 @@
 
 
 
+libgs.visualisation
+====================
 
 :date: Mon Jul 17 16:38:56 2017
-:author: kjetil
+:author: Kjetil Wormnes
+
 
 Overview
------------
+---------
 
 This module contains wraps Bokeh code with the focus to provide the elements to build
 web-apps for a libgs dashboards. It also contains the code necessary to create and runa bokeh server programatically.
@@ -283,15 +286,11 @@ class LivePlot(object):
         The create_fig method shall set up a Bokeh Figure object appropriately and return it
 
         Args:
-            sources:  Will be a ictionary of ColumnDataSources where the keys will correspond to the keys
-            of the :attr:`.live_data` attribute dictionary.
+            sources:    Will be a ictionary of ColumnDataSources where the keys will correspond to the keys
+                        of the :attr:`.live_data` attribute dictionary.
 
         Returns:
-
-        Args:
-            sources:
-
-        Returns:
+            Nothing
 
         """
         raise Error('create_fig(self,sources) must be overloaded')

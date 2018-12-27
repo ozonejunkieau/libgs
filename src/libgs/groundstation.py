@@ -1,36 +1,39 @@
 # -*- coding: utf-8 -*-
 """
-Copyright © 2017-2018 The University of New South Wales
+..
+    Copyright © 2017-2018 The University of New South Wales
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
-Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+    Permission is hereby granted, free of charge, to any person obtaining a copy of
+    this software and associated documentation files (the "Software"), to deal in
+    the Software without restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+    Software, and to permit persons to whom the Software is furnished to do so,
+    subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Except as contained in this notice, the name or trademarks of a copyright holder
+    Except as contained in this notice, the name or trademarks of a copyright holder
 
-shall not be used in advertising or otherwise to promote the sale, use or other
-dealings in this Software without prior written authorization of the copyright
-holder.
+    shall not be used in advertising or otherwise to promote the sale, use or other
+    dealings in this Software without prior written authorization of the copyright
+    holder.
 
-UNSW is a trademark of The University of New South Wales.
+    UNSW is a trademark of The University of New South Wales.
 
 
-Created on Thu May 25 14:08:34 2017
+libgs.groundstation
+====================
 
-@author: kjetil
+:date:   Thu May 25 14:08:34 2017
+:author: Kjetil Wormnes
 """
 
 import ephem
@@ -1000,16 +1003,19 @@ class GroundStation(GroundStationBase):
             compute_ant_points = kwargs['compute_ant_points']
         except:
             compute_ant_points = True
-
-
-        # TODO: Remove. The current rotator class will never move antennas beyond its limits anyway, so it is not necessary to do so here
-        # try:
-        #     min_el = kwargs['min_el']
-        # except:
-        #     min_el = rotators[0].MIN_EL
-        #     for r in rotators[1:]:
-        #         if r.MIN_EL > min_el:
-        #             min_el = r.MIN_EL
+            
+        try:
+            min_el = kwargs['min_el']
+        except:
+            min_el = rotators[0].MIN_EL
+            for r in rotators[1:]:
+                if r.MIN_EL > min_el:
+                    min_el = r.MIN_EL
+                    
+        # #TODO: Remove
+        # if min_el < Defaults.PHYSICAL_ROTATOR_LIMIT_MIN:
+        #     log.error("min_el=%.2f deg is lower than the physical rotator limit of %.2f. Using physical limit instead"%(min_el, Defaults.PHYSICAL_ROTATOR_LIMIT_MIN))
+        #     min_el = Defaults.PHYSICAL_ROTATOR_LIMIT_MIN
 
         #
         # Check that tracking is not already in progress
@@ -1036,17 +1042,14 @@ class GroundStation(GroundStationBase):
         # Increase monitoring rate for duration of pass
         #
         self._set_monitor_pass(True)
-
-
-        # TODO: Remove. The current rotator never allows moving anenna beyond its limtis anyway so not necessary
-        #       to do that check here.
+            
         #
         # Crop pass data to only include data above the visibility horizon
         #
-        # pdat = pdat[pdat.el >= min_el]
-        #
-        # if pdat.empty:
-        #     raise Error("Pass does not ever become visible. Cannot track")
+        pdat = pdat[pdat.el >= min_el]
+
+        if pdat.empty:
+            raise Error("Pass does not ever become visible. Cannot track")
 
 
 

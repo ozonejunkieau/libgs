@@ -29,11 +29,12 @@
     UNSW is a trademark of The University of New South Wales.
 
 
-:date: Thu Jul 27 20:40:36 2017
-:author: kjetil
+libgs.utils
+===========
 
-Overview
----------
+:date: Thu Jul 27 20:40:36 2017
+:author: Kjetil Wormnes
+
 
 This module contains utilities and settings for the libgs package.
 
@@ -41,9 +42,9 @@ This module contains utilities and settings for the libgs package.
 Examples
 ---------
 
+.. todo:
+    Add examples to libgs.utils
 
-Module Reference
------------------
 
 """
 from __future__ import print_function
