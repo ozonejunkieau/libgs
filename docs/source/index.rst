@@ -21,6 +21,17 @@
 Welcome to libgs's documentation!
 =================================
 
+.. warning::
+
+   If you are reading this on readthedocs, the documentation is most likely broken.
+   So until I succeed in getting it to play nice with RTD (i.e. until further notice), it will be hosted
+   on github pages and you can access it at the following address:
+
+   https://kworm1.github.io/libgs-docs/
+
+
+
+
 .. autosummary::
     :toctree: _autosummary
 
