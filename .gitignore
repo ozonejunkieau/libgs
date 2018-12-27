@@ -1,0 +1,16 @@
+
+\.cache/
+
+\.eggs/
+
+\.pytest_cache/
+
+_venv/
+
+src/libgs\.egg-info/
+
+docs/build/
+
+*.pyc
+
+*_pycache*
