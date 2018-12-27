@@ -7,7 +7,6 @@
 .. autoclass:: {{ objname }}
 
    {% block methods %}
-   .. automethod:: __init__
 
    {% if methods %}
    .. rubric:: Methods
@@ -27,7 +26,7 @@
    {% block attributes %}
    {% if attributes %}
    .. rubric:: Attributes
-
+   
    .. autosummary::
       :toctree: .
    {% for item in attributes %}

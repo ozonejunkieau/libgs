@@ -199,8 +199,8 @@ texinfo_documents = [
 intersphinx_mapping = {
     'python': ('https://docs.python.org/', None),
     'sqlalchemy': ('https://docs.sqlalchemy.org/en/latest/', None),
-    'numpy': ('http://docs.scipy.org/doc/numpy/', None),
-    'pandas': ('http://pandas.pydata.org/pandas-docs/stable', None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable', None),
     'bokeh': ('https://bokeh.pydata.org/en/latest/', None)
     }
 
