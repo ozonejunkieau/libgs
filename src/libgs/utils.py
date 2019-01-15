@@ -36,15 +36,15 @@ libgs.utils
 :author: Kjetil Wormnes
 
 
-This module contains utilities and settings for the libgs package.
+This module contains utilities and settings for the libgs package. 
 
+Functions and classes from utils can be imported to provide useful and common functionality across the application.
 
-Examples
----------
+.. note::
 
-.. todo:
-    Add examples to libgs.utils
-
+   Implementers should take particular note of :func:`wait_loop` which will allow you to wait
+   for events, or perform an equivalent of time.sleep while aborting in case of termination events. The blocking
+   time.sleep should be avoided as much as possible.
 
 """
 from __future__ import print_function
@@ -61,12 +61,13 @@ from datetime import datetime
 import ephem
 from libgs_ops.rpc import RPCClient
 
-
-abort_all = threading.Event()
-
 log = logging.getLogger('libgs-log')
 log.addHandler(logging.NullHandler())
 
+
+#: abort_all is an importanle event that is being used all through
+#: libgs. When set all wait_loops will exit.
+abort_all = threading.Event()
 
 
 ##########################
@@ -100,14 +101,13 @@ class AbortAllException(Error):
 ##########################
 
 
+
 class Defaults:
     """
     Defines default values used by the different classes.
 
-    .. note:
-
+    .. note::
         Many (probably most) of these values are configurable in other ways (through class interfaces, constructors, etc...)
-
         This class just holds all the fallback values (defaults).
 
     """
@@ -273,9 +273,9 @@ class Defaults:
     RECORD_SPECTRA_MAX_LEN = 900    #: If spectrum recording enabled, maximum number of spectra to record in a single pass
     RECORD_SPECTRA_DT = 1.0         #: If spectrum recording enabled, time delay between subsequent recorded spectra (in seconds)
 
-    #
-    # Max allowed dt (in seconds) in data used for gs tracking
-    #
+    #:
+    #: Max allowed dt (in seconds) in data used for gs tracking
+    #:
     MAX_TRACK_DT = 1.0
 
     #:
@@ -289,8 +289,8 @@ class Defaults:
     #
     # Visualisation waterfalls
     #
-    WFALL_COLORMAP = 'Viridis256' #: Bokeh colormap. see https://bokeh.pydata.org/en/0.12.6/docs/reference/palettes.html
-    WFALL_JPG_COLORMAP = 'viridis' #: Matplotlib colormap. See: https://matplotlib.org/examples/color/colormaps_reference.html
+    WFALL_COLORMAP = 'Viridis256' #: Bokeh colormap, see bokeh.pydata.org/en/0.12.6/docs/reference/palettes.html
+    WFALL_JPG_COLORMAP = 'viridis' #: Matplotlib colormap, see matplotlib.org/examples/color/colormaps_reference.html
     WFALL_JPG_WIDTH = 250 #: Width of each recorded waterfall plot (in pixels) if dpi=100
     WFALL_JPG_HEIGHT = 600 #: Height of each recorded waterfall plot(in pixels) if dpi = 100
     WFALL_JPG_WIDTH_EXTRA = 200 #: Extra width of each recorded waterfall plot in pixels if dpi = 100
@@ -311,7 +311,7 @@ class Defaults:
 
 def raise_if_aborted():
     """
-    This method will raise an exception if the abort_all global event has been set.
+    Raises an exception if the abort_all global event has been set.
     """
     if abort_all.is_set():
         raise AbortAllException("abort_all event has been set")
@@ -319,6 +319,17 @@ def raise_if_aborted():
 
 
 class RegularCallback(object):
+    """
+    Invokes a callback at regular intervals.
+
+    Example:
+
+    >>> def callback():
+    >>>    print("Called callback")
+    >>> rb = RegularCallback(callback, 5)
+    >>> rb.start()
+
+    """
 
     def __init__(self, func, delay, min_interval=0.05):
         """
@@ -383,9 +394,15 @@ class RegularCallback(object):
             #time.sleep(max(self.delay - (time.time() - t0), self.min_interval))
 
     def start(self):
+        """
+        Start the regular callback
+        """
         self._pthr.start()
 
     def stop(self):
+        """
+        Stop the regular callback
+        """
         self._stop_thread = True
         self._pthr.join()
 
@@ -393,10 +410,28 @@ class RegularCallback(object):
 
 def conv_time(d, to='iso', float_t='julian', ignore_ambig_types = False):
     """
+    Convert between different time/date types used in libgs
+
     There are a number of different date formats used around libgs
     ephem.Date, datetime, pandas.Timestamp to mention some.
     Also modified Julian time and various string formats.
     
+    Time formats that can be converted:
+
+    ========== ==========================
+    iso        string in `ISO 8601 <https://en.wikipedia.org/wiki/ISO_8601>`_ time format. E.g. "2019-01-14T21:49:12.321Z"
+    julian     float representing juilan time (days since 12:00:00 1 Jan 2713 BC in the Julian calendar)
+    unix       integer representing UNIX time (seconds since 00:00:00 1 Jan 1970)
+    datetime   python :class:`datetime.datetime` class
+    pandas     :class:`pandas.Timestamp` class
+    ephem      :class:`ephem.Date` class
+    ========== ==========================
+
+    Args:
+        to (str):           One of the abovementioned formats
+        float_t (str):      If converting from a numeric, specify one if it is 'julian' or 'unix', can be omitted if converting from other formats
+        ignore_ambig_types: Only allow conversions to non-ambigous types (i.e. none of the numeric or string formats)
+
     
     """
     if ignore_ambig_types and not (isinstance(d, ephem.Date) or isinstance(d, pd.Timestamp) or isinstance(d, datetime)):
@@ -413,7 +448,6 @@ def conv_time(d, to='iso', float_t='julian', ignore_ambig_types = False):
             d2 = pd.to_datetime(d, unit='D', origin='julian')
         elif float_t == 'unix':
             d2 = pd.to_datetime(d, unit="s", origin="unix" )
-            #d2 = pd.to_datetime(datetime.fromtimestamp(d))
         else:
             raise Error("Unknown float  time type {}".format(float_t))
     elif isinstance(d, basestring):
@@ -453,6 +487,27 @@ def wait_loop(events_or_callables = [], timeout=None, dt=0.1):
     """
     Generic waiting loop. It will wait for any event
     (of type threading.Event) to be set, or for any callable to return True
+
+    Example:
+
+    >>> ev = wait_loop([fn, event], timeout=10)
+    >>> if ev is None:
+    >>>    print("Timeout")
+    >>> elif fn in ev:
+    >>>    print("fn callable returned true)
+    >>> elif event in ev:
+    >>>    print("threading event became true)
+
+
+    Args:
+        events_or_callables (list(callable or threading.Event)):
+            A list of events or callables to monitor. If any return true the wait loop will be broken
+        timeout (int): Maximum number of seconds to wait until breaking regardless
+        dt (float): The internal sleep interval between checking events (default = 0.1 sec)
+
+    Returns:
+        A list of the events that have returned true. In case of timeout returns None. An exception will
+        be raised if the global abort_event has been set.
     """
     t0 = time.time()
 
@@ -487,8 +542,9 @@ def wait_loop(events_or_callables = [], timeout=None, dt=0.1):
 
 def safe_sleep(t):
     """
-    safe_sleep uses a subset of the wait_loop capabilities to implement an anologe to the time.sleep() function.
+    Sleep for a specified number of seconds.
 
+    safe_sleep uses a subset of the :func:`wait_loop` capabilities to implement an anologe to the time.sleep() function. 
     The advantage is that it will raise an exception if the global abort event gets set, and as such is safe to
     use in thread loops that need to exit on adfa-gs exit.
 
@@ -498,6 +554,9 @@ def safe_sleep(t):
 
 
 class UTCLogFormatter(logging.Formatter):
+    """
+    A logging formatter that displays records in UTC (zulu) time
+    """
     converter = time.gmtime
     use_colour = Defaults.USE_LOG_COLOUR
 
@@ -518,6 +577,10 @@ class UTCLogFormatter(logging.Formatter):
         return s
 
 class UTCLogFormatterHTML(UTCLogFormatter):
+    """
+    A logging formatter that displays records in UTC (zulu) time and uses HTML tags for formatting.
+    """
+
 
     def format(self, record):
 
@@ -528,7 +591,6 @@ class UTCLogFormatterHTML(UTCLogFormatter):
         else:
             s = '<pre style="'
 
-        #s += 'max-width: 100%;overflow-x: auto;">{}</pre>\n'.format(frec)
         s += '">{}</pre>\n'.format(frec)
         return s
 
@@ -577,31 +639,6 @@ def setup_logger(logger,
 
     # create logger
     logger.setLevel(logging.DEBUG)
-
-    # create formatter
-
-    # class MyFormatter(logging.Formatter):
-    #     converter = time.gmtime
-    #     use_colour = Defaults.USE_LOG_COLOUR
-    #
-    #     def formatTime(self, record, datefmt=None):
-    #         ct = self.converter(record.created)
-    #         t = time.strftime("%Y-%m-%dT%H:%M:%S", ct)
-    #         s = "%s.%03dZ" % (t, record.msecs)
-    #
-    #         return s
-    #
-    #     def format(self, record):
-    #
-    #         s =  super(MyFormatter, self).format(record)
-    #
-    #         if record.levelno >= logging.ERROR and self.use_colour:
-    #             s = "\033[1;31m%s\033[1;0m"%(s)
-    #
-    #         return s
-
-
-
     formatter = UTCLogFormatter(fmt)
 
     # create console handler and set level to debug
@@ -639,6 +676,9 @@ def setup_logger(logger,
 
 
 def schedule_regular_callback(func, delay):
+    """
+    A wrapper for :class:`RegularCallback`
+    """
     cb =  RegularCallback(func, delay)
     cb.start()
     return cb
@@ -665,9 +705,18 @@ def _print( *arg, **kwarg):
 
 
 def bytes2prettyhex(data, whitespacelen= Defaults.LOG_STRING_LEN):
+    """
+    Helper function to convert a bytearray to a pretty printed hex string. 
 
-    #log.info(st)
+    Example:
 
+    >>> print(bytes2prettyhex(range(59), whitespacelen=10))
+          000000  00-01-02-03-04-05-06-07-08-09-0A-0B-0C-0D-0E-0F
+          000010  10-11-12-13-14-15-16-17-18-19-1A-1B-1C-1D-1E-1F
+          000020  20-21-22-23-24-25-26-27-28-29-2A-2B-2C-2D-2E-2F
+          000030  30-31-32-33-34-35-36-37-38-39-3A
+
+    """
     st = ''
     if data is not None:
         data_array = bytearray(data)
@@ -679,11 +728,29 @@ def bytes2prettyhex(data, whitespacelen= Defaults.LOG_STRING_LEN):
     return st
 
 def bytes2hex(data):
+    """
+    Helper function to convert a bytearray to a hex string AA-BB-CC-...
+
+    Example:
+
+    >>> bytes2hex([0xaa, 0xbb, 0x00, 0x01, 0x10])
+    'AA-BB-00-01-10'    
+
+    """
     data =bytearray(data)
     return('-'.join(["%02X"%(x) for x in data]))
 
 
 def hex2bytes(hexstr):
+    """
+    Helper function to convert a hex string (AA-BB-CC-...) to a python bytearray
+
+    Example:
+
+    >>> hex2bytes("AA-BB-00-01-10")
+    bytearray(b'\\xaa\\xbb\\x00\\x01\\x10')
+
+    """
     data = hexstr.split('-')
     return bytearray(''.join([chr(int(x, 16)) for x in data]))
 
@@ -691,9 +758,9 @@ def hex2bytes(hexstr):
 
 class XMLRPCTimeoutServerProxy(RPCClient):
     """
-    .. warning::
-
-        Deprecated in favor of RPCClient. The implmeentation is now just that this is an alias for RPCClient
+    Deprecated in favor of :class:`libgs_ops.rpc.RPCClient`. 
+    
+    The implmentation is now just that this is an alias for RPCClient
 
     .. todo::
 
@@ -703,12 +770,5 @@ class XMLRPCTimeoutServerProxy(RPCClient):
 
 
 
-
 if __name__ == '__main__':
-    x = 2
     setup_logger(log, cons_loglvl=logging.DEBUG)
-    #m = Monitor(dt = 1)
-    #fn = lambda: x
-    #alfn = lambda r: 'RED' if r < 0 else 'GREEN'
-    #m.register_monitor('blah test', 5, fn, alert_fn = alfn)
-    #m.start()

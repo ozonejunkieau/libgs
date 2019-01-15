@@ -35,8 +35,35 @@ libgs.restapi
 :date:   Mon Sep 18 09:22:40 2017
 :author: Kjetil Wormnes
 
+The REST-API interface to the libgs databases (and arbitrary XMRPC APIs)
 
-This defines the rest api that permits interaction with a database and arbitrary XMLRPC apis.
+Basic usage:
+
+>>> api = RESTAPI()
+>>> api.start()
+
+See :class:`RESTAPI` for detailed information on the permitted arguments. 
+
+the class, when calling start() will set up a number of API endpoints for access to the
+different libgs databases. It is also possible to connect arbitrary XMLRPC APIs that will
+also be exposed.
+
+A detailed help with examples for how to use the api is automatically generated
+by the API itself and made available to the user. Just to to ``hostname:port/api`` to see it,
+where hostname and port can be configured when creating the :class:`RESTAPI`.
+
+XMLRPC API endpoints can also, as mentioned, be mapped to the RESTAPI. To do so
+you must pass some information when creating the api. For example:
+
+>>> api = RESTAPI(rpcapi={'rpc/gs':'http://localhost:10001', 'rpc/sch':'http://localhost:8000'})
+
+will create two additional api endpoints on ``/api/rpc/gs`` and ``/api/rpc/sch`` to which it will
+map the :class:`libgs.groundstation.GroundStation` and :class:`libgs.rpc.RPCSchedulerServer`  XMLRPC API interfaces respectively.
+
+Note that any XMLRPC interface can be mapped this way so long as it has registered introspection functions. 
+See SimpleXMLRPCServer. :meth:`~SimpleXMLRPCServer.SimpleXMLRPCServer.register_introspection_functions`. (you can of course also
+use :class:`libgs.rpc.RPCServer` as a drop-in replacement for SimpleXMLRPCServer anytime you make such an api)
+
 
 """
 
@@ -365,26 +392,12 @@ class RESTAPI(object):
     Will create a RESTFUL API interface to the Commslog database and start
     it on a specified port. The api will be started in a separate thread.
 
-    The URI endpoints are:
-
-    /api/comms
-      Download the entire communications log
-
-    /api/comms/<pass_id>
-      Download a specific pass
-
-    Valid parameters are:
-
-    ======== =============================================
-    format   output format: json / csv / html
-    N        max number of entries to return. Omit for all
-    ======== =============================================
-
     Usage:
       >>> api = RESTAPI()
       >>> api.start()
 
-
+    The help will be automatically generated and is available on the endpoint ``/api`` after
+    creation. See :mod:`~libgs.restapi` for more details.
 
     """
 
@@ -401,11 +414,15 @@ class RESTAPI(object):
                  debug=True):
         """
         Args:
-          commslog (CommsLog)     : Database end-point for comms log
+          commslog (:class:`~libgs.database.CommsLog`): Database specification for comms database
+          monlog (:class:`~libgs.database.MonitorDb`) : Database specification for monitoring db
+          passdb (:class:`~libgs.database.PassDb`)    : Database specification for passes db
           host     (str)          : Ip address to bind to
           port     (int)          : Port to bind to
           default_format (str)    : Format to provide if no argument given (default = json)
+          rpcapi (dict)           : Dictionary of endpoint:url for XMLRPC APIs to map.
           allowed  (list(str))    : LIst of allowed URI patterns. Default is None, which actually means all
+          retry_rpc_conn (bool)   : If a mapped XMLRPC API is not available, retry connection at regular intervals.
           debug    (bool)         : Set flask in Debug mode for extra verbosity
 
 
@@ -484,6 +501,9 @@ class RESTAPI(object):
         app.run(host=self._host, port=self._port, debug=self._debug, use_reloader=False)
 
     def start(self):
+        """
+        Start the REST API (in a separate thread)
+        """
         self._pthr = Thread(target=self._run_api)
         self._pthr.daemon = True
         self._pthr.start()
@@ -492,12 +512,18 @@ class RESTAPI(object):
 
 
     def stop(self):
+        """
+        Stop the REST API
+
+        .. warning::
+           This method is not currently implemented and does not do anything.
+        """
         pass
 
 
 
 # Just a helper funciton used a few places below
-def nid_to_int_if_possible(nid):
+def _nid_to_int_if_possible(nid):
     try:
         return int(nid)
     except:
@@ -505,7 +531,7 @@ def nid_to_int_if_possible(nid):
 
 
 
-def handle_bytes(d, format):
+def _handle_bytes(d, format):
     if not isinstance(d, bytearray):
         return d
         
@@ -518,7 +544,7 @@ def handle_bytes(d, format):
     else:
         raise Exception("Invalid format")
 
-def is_allowed(fn):
+def _is_allowed(fn):
     """
     This decorator checks if a resource is allowed
     """
@@ -644,8 +670,8 @@ def _style_html_page(ret, title, cur_format, cur_page="", helptexts=True, err_ms
 
 @app.route("/api/comms")
 @app.route("/api/comms/<pass_id>")
-@is_allowed
-def get_comms(pass_id=None):
+@_is_allowed
+def _get_comms(pass_id=None):
 
     api = current_app.config['API']
     log = api.commslog
@@ -682,7 +708,7 @@ def get_comms(pass_id=None):
     ret = log.get(pass_id=pass_id, nid = nid, orig=orig, dest=dest, tstamps=tstamps, limit=N)
 
     # Make norad ids proper integers if we can
-    ret['nid'] = [nid_to_int_if_possible(nid) for nid in ret['nid']]
+    ret['nid'] = [_nid_to_int_if_possible(nid) for nid in ret['nid']]
 
 
     # ensure table has columns in the right order
@@ -693,12 +719,12 @@ def get_comms(pass_id=None):
     ret.columns = retc
 
     if form == 'html':
-        ret  = ret.applymap(lambda x: handle_bytes(x, 'hex'))
+        ret  = ret.applymap(lambda x: _handle_bytes(x, 'hex'))
         ret.pass_id = ['<a href="comms/{}?format=html">{}</a>'.format(r['pass_id'],r['pass_id']) for k,r in ret.iterrows()]
         return _style_html_page(ret, "Comms log", "", "comms")
 
     elif form == 'json':
-        ret  = ret.applymap(lambda x: handle_bytes(x, 'b64'))
+        ret  = ret.applymap(lambda x: _handle_bytes(x, 'b64'))
 
         rv = app.response_class(
             response=ret.to_json(),
@@ -709,7 +735,7 @@ def get_comms(pass_id=None):
         return(rv)
 
     elif form == 'csv':
-        ret  = ret.applymap(lambda x: handle_bytes(x, 'hex'))
+        ret  = ret.applymap(lambda x: _handle_bytes(x, 'hex'))
         rv = app.response_class(
             response=ret.set_index(_RETURNED_TSTAMP_LBL).to_csv(),
             status=200,
@@ -729,8 +755,8 @@ def get_comms(pass_id=None):
 
 @app.route("/api/mon")
 @app.route("/api/mon/<pass_id>")
-@is_allowed
-def get_mon(pass_id = None):
+@_is_allowed
+def _get_mon(pass_id = None):
     api = current_app.config['API']
     monlog = api.monlog
 
@@ -784,7 +810,7 @@ def get_mon(pass_id = None):
 
             ret1 = ret.copy()
             ret1 = ret1.pivot(index=_RETURNED_TSTAMP_LBL, columns='key', values='value')
-            ret1 = ret1.applymap(lambda x: handle_bytes(x, format='b64'))
+            ret1 = ret1.applymap(lambda x: _handle_bytes(x, format='b64'))
             ret1 = ret1.sort_index(ascending=False).fillna('')
 
             return _style_html_page(ret1, "Monitoring data", 'html', "mon")
@@ -823,8 +849,8 @@ def get_mon(pass_id = None):
 
 @app.route("/api/passes")
 @app.route("/api/passes/<pass_id>")
-@is_allowed
-def get_passes(pass_id = None):
+@_is_allowed
+def _get_passes(pass_id = None):
     api = current_app.config['API']
     passlog = api.passdb
     commslog = api.commslog
@@ -878,7 +904,7 @@ def get_passes(pass_id = None):
 
             # pivot the table
             ret1 = ret1.pivot(index='pass_id', columns='key', values='value')
-            ret1 = ret1.applymap(lambda x: handle_bytes(x, format='b64'))
+            ret1 = ret1.applymap(lambda x: _handle_bytes(x, format='b64'))
             ret1 = ret1.sort_index(ascending=False)
             cols = ['norad_id', 'start_t', 'start_track_t', 'end_track_t', 'stowed_t', 'max_el']
             cols = cols + [c for c in ret1.columns if c not in cols]
@@ -915,7 +941,7 @@ def get_passes(pass_id = None):
             if 'signoffs' in cols:
                 ret1.signoffs = [', '.join(s) if isinstance(s, list) else s for s in ret1.signoffs]
 
-            ret1['norad_id'] = [nid_to_int_if_possible(nid) for nid in ret1['norad_id']]
+            ret1['norad_id'] = [_nid_to_int_if_possible(nid) for nid in ret1['norad_id']]
 
             #
             # add some meta columns
@@ -939,7 +965,7 @@ def get_passes(pass_id = None):
 
 
     if form == 'htmlraw':
-        ret = ret.applymap(lambda x: handle_bytes(x, format='b64'))
+        ret = ret.applymap(lambda x: _handle_bytes(x, format='b64'))
         ret.pass_id = ret.pass_id.apply(lambda x: '<a href="/api/passes/{}?format=html">{}</a>'.format(x,x))
         # html = "<!DOCTYPE html><html><body>" + ret.style.set_table_styles(_TABLE_STYLES).render()
         # html += "</body></html>"
@@ -949,7 +975,7 @@ def get_passes(pass_id = None):
 
 
     elif form == 'json':
-        ret = ret.applymap(lambda x: handle_bytes(x, format='b64'))
+        ret = ret.applymap(lambda x: _handle_bytes(x, format='b64'))
         rv = app.response_class(
             response=ret.to_json(),
             status=200,
@@ -959,7 +985,7 @@ def get_passes(pass_id = None):
         return(rv)
 
     elif form == 'csv':
-        ret = ret.applymap(lambda x: handle_bytes(x, format='b64'))        
+        ret = ret.applymap(lambda x: _handle_bytes(x, format='b64'))        
         rv = app.response_class(
             response=ret.set_index(_RETURNED_TSTAMP_LBL).to_csv(),
             status=200,
@@ -976,8 +1002,8 @@ def get_passes(pass_id = None):
 @app.route("/api/file")
 @app.route("/api/file/<dbname>")
 @app.route("/api/file/<dbname>/<fname>")
-@is_allowed
-def get_file(dbname=None, fname=None):
+@_is_allowed
+def _get_file(dbname=None, fname=None):
 
     if dbname is None or fname is None:
         return "Invalid DB / FILE" , 403
@@ -1029,7 +1055,7 @@ def get_file(dbname=None, fname=None):
         return rv
 
     else:
-        ret = handle_bytes(data, 'b64string')
+        ret = _handle_bytes(data, 'b64string')
         rv = app.response_class(
             response=json.dumps(ret),
             status=200,
@@ -1040,8 +1066,8 @@ def get_file(dbname=None, fname=None):
 
 
 @app.route("/api/<path:path>")
-@is_allowed
-def get_rpcapi(path):
+@_is_allowed
+def _get_rpcapi(path):
     """
     Invoke a (user-defined) RPC API. 
     
@@ -1131,8 +1157,8 @@ def get_rpcapi(path):
 
 
 @app.route("/api", strict_slashes=False)
-@is_allowed
-def get_help():
+@_is_allowed
+def _get_help():
     api = current_app.config['API']
     rpcapi = api.rpcapi
     
@@ -1169,7 +1195,6 @@ def get_help():
 
     
     return _style_html_page(html, "libgs REST API", None, "help"), 200
-
 
 
 if __name__=='__main__':

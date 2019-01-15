@@ -9,7 +9,9 @@
    .. autosummary::
       :toctree: .
    {% for item in functions %}
+      {% if not item.exclude_from_docs %}
       {{ item }}
+      {% endif %}
    {%- endfor %}
    {% endif %}
    {% endblock %}

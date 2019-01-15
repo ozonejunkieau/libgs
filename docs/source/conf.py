@@ -197,11 +197,12 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/', None),
+    'python': ('https://docs.python.org/2.7/', None),
     'sqlalchemy': ('https://docs.sqlalchemy.org/en/latest/', None),
     'numpy': ('https://docs.scipy.org/doc/numpy/', None),
     'pandas': ('https://pandas.pydata.org/pandas-docs/stable', None),
-    'bokeh': ('https://bokeh.pydata.org/en/latest/', None)
+    'bokeh': ('https://bokeh.pydata.org/en/latest/', None),
+    'libgs_ops': ('https://kworm1.github.io/libgs_ops-docs/', None)
     }
 
 # -- Options for todo extension ----------------------------------------------
@@ -222,3 +223,12 @@ napoleon_use_admonition_for_references = False
 napoleon_use_ivar = False
 napoleon_use_param = True
 napoleon_use_rtype = True
+
+
+# -------
+
+# def autodoc_skip_member(app, what, name, obj, skip, options):
+#     print('BLAH')
+
+# def setup(app):
+#     app.connect('autodoc-skip-member', autodoc_skip_member)

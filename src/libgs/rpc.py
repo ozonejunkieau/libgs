@@ -34,6 +34,14 @@ libgs.rpc
 :date:   Tue Sep 19 16:29:54 2017
 :author: Kjetil Wormnes
 
+RPC interface to libgs
+
+Currently implmeents the generic RPCServer type as well as the
+rpc interface to the scheduler. 
+
+The latter is a deprecation and should be moved directly into the
+Scheduler class.
+
 """
 
 from threading import Thread
@@ -48,18 +56,33 @@ ags_log = logging.getLogger('libgs-log')
 ags_log.addHandler(logging.NullHandler())
 
 
-#
-# TODO: Move into Scheduler class (in the same way the ground station RPC interface is in the groundstaiton class now)
-#
 class RPCSchedulerServer(object):
     """
+    XMLRPC interface to Scheduler class
+
     This class sets up an RPC server that can be contacted remotely in order
     to load and execute a schedule (it will create a local scheduler with that)
-    schedule and execute it.
+    schedule and execute it. 
+
+    Most of the methods here are directly wrapping Scheduler methods, so please
+    see :class:`libgs.scheduler.Scheduler` for details.
+
+    .. todo::
+        Move into Scheduler class (in the same way the ground station RPC interface is in the groundstaiton class now)
+
     """
 
 
     def __init__(self, gs, addr = Defaults.XMLRPC_SCH_SERVER_ADDR, port=Defaults.XMLRPC_SCH_SERVER_PORT, enforce_signoffs=None):
+        """
+
+        Args:
+            gs:               The groundstation object to interface with
+            addr:             The address to bind to
+            port:             The port to bind to
+            enforce_signoffs: (optional) Number of signoffs to enforce
+
+        """
 
         self._addr = addr
         self._port = port
@@ -83,6 +106,11 @@ class RPCSchedulerServer(object):
 
 
     def execute_schedule(self, schedule, track_full_pass=False, compute_ant_points = True, N=None):
+        """
+        Create a new scheduler, load the attached schedule and execute it.
+
+        See :class:`libgs.scheduler.Scheduler`
+        """
         if self._disabled: # Note, the scheduler itself is also enabled/disabled. But also want to prevent the creation of new schedules.
             raise Exception("RPCSchedulerServer: Currently disabled. Call enable() first")
 
@@ -91,21 +119,33 @@ class RPCSchedulerServer(object):
         self.scheduler.execute(N=N)
 
     def stop_schedule(self):
+        """
+        Stop the scheduler. See  :meth:`libgs.scheduler.Scheduler.stop`.
+        """
         if hasattr(self, 'scheduler'):
             self.scheduler.stop()
 
     def scheduler_state(self):
+        """
+        Get the scheduler state. See  :attr:`libgs.scheduler.Scheduler.state`
+        """
         if hasattr(self, 'scheduler'):
             return(self.scheduler.state)
         else:
             return('never started')
 
     def start(self):
+        """
+        Start XMLRPC server in a new thread
+        """
         self._pthr = Thread(target = self.server.serve_forever)
         self._pthr.daemon = True
         self._pthr.start()
 
     def disable(self):
+        """
+        Disable scheduler. See  :meth:`libgs.scheduler.Scheduler.disable`.
+        """        
         self._disabled = True
         if hasattr(self, 'scheduler'):
             self.scheduler.disable()
@@ -113,6 +153,10 @@ class RPCSchedulerServer(object):
             raise Exception("No scheduler to disable")
 
     def enable(self):
+        """
+        Enable scheduler. See  :meth:`libgs.scheduler.Scheduler.enable`.
+        """        
+
         self._disabled = False
         if hasattr(self, 'scheduler'):
             self.scheduler.enable()
@@ -129,10 +173,10 @@ from libgs_ops.scheduling import RPCSchedulerClient
 
 class RPCServer(SimpleXMLRPCServer):
     """
-    Drop-in replacement for SimpleXMLRPCServer that supports kwargs.
+    Drop-in replacement for :class:`SimpleXMLRPCServer.SimpleXMLRPCServer` that supports kwargs.
 
-    It also allows the address to be specified as a uri, http://hostname:port instead of (hostname,port), but
-    the latter is also supported for full SimpleXMLRPCServer compatability.
+    It also allows the address to be specified as a uri, ``http://hostname:port`` instead of (hostname,port), but
+    the latter is also supported for full :class:`SimpleXMLRPCServer.SimpleXMLRPCServer` compatability.
 
     Finally, it allows you to call register_function in the same way as for SimpleXMLRPCServer, but it also
     allows you to use it as a decorator.
@@ -141,25 +185,38 @@ class RPCServer(SimpleXMLRPCServer):
 
     A)
 
-    s = RPCServer()
-    @s.register_function
-    def blah()
-        print("blah")
+    >>> s = RPCServer()
+    >>> @s.register_function
+    >>> def blah()
+    >>>    print("blah")
 
     B)
-    s = RPCServer()
-    def blah()
-        print("blah")
 
-    s.register_function(blah)
-
+    >>> s = RPCServer()
+    >>> def blah()
+    >>>     print("blah")
+    >>> s.register_function(blah)
 
     """
+
+    ##########################################################################################
+    #
+    # Private attributes and methods
+    #
+    ##########################################################################################
+
 
     # This flag is added by the client to an argument dictionary to be treated as kwargs
     _KWARGS_FLAG = '__xmlrpc__kwargs__'
 
     def __init__(self,  uri, logRequests = False, allow_none=True, start=True):
+        """
+        Args:
+            uri: address and port to bind to. Accepted formats are (str) ``http://domain.name:port`` *and* (domain.name, port)
+            logRequests: See :class:`SimpleXMLRPCServer.SimpleXMLRPCServer`
+            allow_none: See :class:`SimpleXMLRPCServer.SimpleXMLRPCServer`
+            start: Start server immediately.
+        """
 
         if isinstance(uri, basestring): # Allow http://domain.name:port definition
             if uri[:8] != 'https://' and uri[:7] != 'http://':
@@ -185,6 +242,9 @@ class RPCServer(SimpleXMLRPCServer):
 
     @property
     def is_serving(self):
+        """
+        Returns True if the 
+        """
         if hasattr(self, '_serving') and self._serving:
             return True
         else:

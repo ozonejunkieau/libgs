@@ -34,6 +34,16 @@ libgs.scheduler
 
 :date:   Sun Aug  6 17:36:19 2017
 :author: Kjetil Wormnes
+
+This module implements the libgs Scheduler, which makes it possible
+to line up a number of different satellite passes, each with different
+communication plans.
+
+Use :mod:`libgs_ops.scheduling` to create the schedules.
+
+.. note::
+   In addition to the below, this module also exposes everything from :mod:`libgs_ops.scheduling`, for ease of import.
+
 """
 
 
@@ -61,13 +71,12 @@ log.addHandler(logging.NullHandler())
 #        (Multiple ones are a recipe for disaster)
 class Scheduler(object):
     """
-    This is the main scheduler class.
+    Implements the libgs scheduler.
 
     It is responsible for executing the schedule on the ground station. As such
-    it needs access to both the ground station instance
-    and the schedule instance.
+    it needs access to both the ground station instance and the schedule instance.
 
-    ..note::
+    .. note::
         A schedule is assumed immutable after being added to the scheduler
     """
 
@@ -93,6 +102,8 @@ class Scheduler(object):
             track_full_pass (bool (optional)): If this flag is true the scheduler will not complete
                  a pass before the satellite is no longer in view, regardless of whether there
                  are any remaining communications. (Useful for debugging)
+            compute_ant_points (bool (optional)): If true, re-compute (or interpolate) antenna points based on antenna beamwidth. If false follow schedule exactly.
+            enforce_signoffs (int (optional)): If true, will not permit execution of a communications plan that does not have at least the specified number of signoffs.
         """
 
         if hasattr(gs, 'scheduler') and gs.scheduler is not None and gs.scheduler.state == Scheduler.States.EXECUTING:
@@ -117,28 +128,13 @@ class Scheduler(object):
         self.compute_ant_points = compute_ant_points
         self.enforce_signoffs = enforce_signoffs
 
+
+
+    ##########################################################################################
     #
-    # Use properties for the timer in order to ensure that the State is updated
-    # appropriately whenever the timer changes
+    # Private attributes and methods
     #
-    @property
-    def timer(self):
-        return self._timer
-
-    @timer.setter
-    def timer(self, t):
-        self._timer = t
-        self.gs.set_schedule_msg(unicode(self.__str__()))
-
-    @property
-    def state(self):
-        if self._stop:
-            return Scheduler.States.STOPPED
-        elif self._continue > 0:
-            return Scheduler.States.EXECUTING
-        else:
-            return Scheduler.States.IDLE
-
+    ##########################################################################################
 
     def __str__(self):
         s = 'Schedule of communication passes:\n'
@@ -165,33 +161,6 @@ class Scheduler(object):
 
     def __repr__(self):
         return self.__str__()
-
-
-    # Allow the disabling of the scheduler. Main reason is to allow the disabling of the scheduler
-    # when testing to prevent remote connections via rpc
-    @property
-    def disabled(self):
-        if hasattr(self, '_disabled'):
-            return self._disabled
-        else:
-            return False
-
-    @disabled.setter
-    def disabled(self, val):
-        if val not in [True, False]:
-            raise Exception("Scheduler: Disabled can only be True or False")
-
-        # Stop ground station if disabling
-        if val == True:
-            self.stop()
-
-        self._disabled = val
-
-    def disable(self):
-        self.disabled = True
-
-    def enable(self):
-        self.disabled = False
 
     # a wrapper to disable funciton calls if class disabled.
     def _if_not_disabled(fn):
@@ -233,6 +202,116 @@ class Scheduler(object):
             self.timer = (i, 'S', tstart, Timer(sleeptime, self._callback, args=(i,)))
             self.timer[-1].daemon = True
             self.timer[-1].start()
+
+    def _callback(self, i):
+
+        if not self._stop:
+
+            self.timer = (self.timer[0], 'R', None, None)
+            log.info("Executing %s" % (self.schedule.passes[i]))
+
+            self.execute_pass(i)  # <-- this one traps all its own errors so should never fail
+            log.info("Completed pass execution")
+
+            self._continue -= 1
+            self.timer = None
+
+            if self._stop:
+                log.debug("Scheduler was aborted mid-pass, will not continue")
+                return
+
+            if (self._continue > 0) and (( i + 1) < len(self.schedule.passes)):
+                self._schedule_pass(i + 1)
+            else:
+                log.info("Scheduler has finished executing schedule")
+                self._continue = 0 #<-- this is probably not necessary, but set it to 0 just in case.
+                self.stop() #<-- Added 2018-09-14 Make sure the schedule is marked as stopped regardless of the reason for finishing (This prevents attempts to restart it)
+
+    ##########################################################################################
+    #
+    # Properties
+    #
+    ##########################################################################################
+
+    #
+    # Use properties for the timer in order to ensure that the State is updated
+    # appropriately whenever the timer changes
+    #
+    @property
+    def timer(self):
+        """
+        The timer keeps track of the next schedule to execute
+        """
+        return self._timer
+
+    @timer.setter
+    def timer(self, t):
+        self._timer = t
+        self.gs.set_schedule_msg(unicode(self.__str__()))
+
+    @property
+    def state(self):
+        """
+        The current Scheduler state.
+
+        ========== ===============
+        IDLE       Has never been started
+        EXECUTING  Currently running
+        STOPPED    Has previously been running, but not running now.
+        ========== ===============
+
+        """
+        if self._stop:
+            return Scheduler.States.STOPPED
+        elif self._continue > 0:
+            return Scheduler.States.EXECUTING
+        else:
+            return Scheduler.States.IDLE
+
+
+    # Allow the disabling of the scheduler. Main reason is to allow the disabling of the scheduler
+    # when testing to prevent remote connections via rpc
+    @property
+    def disabled(self):
+        """
+        Whether or not the scheduler is currently disabled. Setting this
+        to true will make it not execute, nor will it be possible to start it before
+        it disabled gets set to false again.
+        """
+        if hasattr(self, '_disabled'):
+            return self._disabled
+        else:
+            return False
+
+    @disabled.setter
+    def disabled(self, val):
+        if val not in [True, False]:
+            raise Exception("Scheduler: Disabled can only be True or False")
+
+        # Stop ground station if disabling
+        if val == True:
+            self.stop()
+
+        self._disabled = val
+
+
+    ##########################################################################################
+    #
+    # Public interface
+    #
+    ##########################################################################################
+
+    def disable(self):
+        """
+        Set :attr:`disabled` to True
+        """
+        self.disabled = True
+
+    def enable(self):
+        """
+        Set :attr:`disabled` to False
+        """
+        self.disabled = False
 
     @_if_not_disabled
     def execute(self, N=None):
@@ -276,6 +355,9 @@ class Scheduler(object):
 
     @_if_not_disabled
     def stop(self):
+        """
+        Stop the schedule
+        """
 
         log.info("Stopping scheduler")
 
@@ -299,29 +381,6 @@ class Scheduler(object):
         else:
             log.debug("BLAH: timer is none on call to stop()")
 
-    def _callback(self, i):
-
-        if not self._stop:
-
-            self.timer = (self.timer[0], 'R', None, None)
-            log.info("Executing %s" % (self.schedule.passes[i]))
-
-            self.execute_pass(i)  # <-- this one traps all its own errors so should never fail
-            log.info("Completed pass execution")
-
-            self._continue -= 1
-            self.timer = None
-
-            if self._stop:
-                log.debug("Scheduler was aborted mid-pass, will not continue")
-                return
-
-            if (self._continue > 0) and (( i + 1) < len(self.schedule.passes)):
-                self._schedule_pass(i + 1)
-            else:
-                log.info("Scheduler has finished executing schedule")
-                self._continue = 0 #<-- this is probably not necessary, but set it to 0 just in case.
-                self.stop() #<-- Added 2018-09-14 Make sure the schedule is marked as stopped regardless of the reason for finishing (This prevents attempts to restart it)
 
     @_if_not_disabled
     def execute_pass(self, i):
