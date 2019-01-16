@@ -414,9 +414,9 @@ class RESTAPI(object):
                  debug=True):
         """
         Args:
-          commslog (:class:`~libgs.database.CommsLog`): Database specification for comms database
-          monlog (:class:`~libgs.database.MonitorDb`) : Database specification for monitoring db
-          passdb (:class:`~libgs.database.PassDb`)    : Database specification for passes db
+          commslog (:class:`~libgs.database.CommsLog`): `Database specification <https://docs.sqlalchemy.org/en/latest/core/engines.html>`_ string for comms database
+          monlog (:class:`~libgs.database.MonitorDb`) : `Database specification <https://docs.sqlalchemy.org/en/latest/core/engines.html>`_ string for monitoring db
+          passdb (:class:`~libgs.database.PassDb`)    : `Database specification <https://docs.sqlalchemy.org/en/latest/core/engines.html>`_ string for passes db
           host     (str)          : Ip address to bind to
           port     (int)          : Port to bind to
           default_format (str)    : Format to provide if no argument given (default = json)

@@ -32,17 +32,29 @@ Welcome to libgs's documentation!
 
 
 
+libgs module reference
+-----------------------
+
 .. autosummary::
     :toctree: _autosummary
+    
+    ~libgs.utils
+    ~libgs.scheduler
+    ~libgs.rpc
+    ~libgs.restapi
+    ~libgs.hardware
+    ~libgs.groundstation
+    ~libgs.console_scripts
+    ~libgs.visualisation
+    ~libgs.database
+    ~libgs.emulators
+    ~libgs.monitoring
 
-    libgs.utils
-    libgs.scheduler
-    libgs.rpc
-    libgs.restapi
-    libgs.hardware
-    libgs.groundstation
-    libgs.console_scripts
-    libgs.visualisation
-    libgs.database
-    libgs.emulators
-    libgs.monitoring
+libgs_ops modules
+-----------------
+
+.. autosummary::
+
+    libgs_ops.propagator
+    libgs_ops.scheduling
+    libgs_ops.rpc

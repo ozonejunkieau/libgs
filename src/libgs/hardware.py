@@ -71,20 +71,11 @@ class RotatorBase(object):
     Base class for any rotator hardware interface
 
     The following configuration parameters can be changed by any derived class in order to appropriately configure
-    the rotator
+    the rotator::
 
-    ======================= ===================
-    Parameter               Description
-    ----------------------- -------------------
-    STOWED_AZ               Azimuth to move antenna to when stowing
-    STOWED_EL               Elevation to move antenna to when stowing
-    BEAMWIDTH               Antenna beamwidth (used when calculating granularity of antenna movements)
-    MAX_AZ                  Maximum allowed Azimuth
-    MIN_AZ                  Minimum allowed Azimuth
-    MAX_EL                  Maximum allowed Elevation
-    MIN_EL                  Minimum allowed Elevation
-    SLEW_TIMEOUT            Max time to wait while waiting for slewing to complete
-    ======================= ===================
+        STOWED_AZ, STOWED_EL, BEAMWIDTH, MAX_AZ, MIN_AZ, MAX_EL, MIN_EL, SLEW_TIMEOUT
+    
+    See attribute help below for details about them.
 
     """
 
@@ -126,6 +117,9 @@ class RotatorBase(object):
     #####
     @property
     def name(self):
+        """
+        Property for getting/setting the radio name. If no name is supplied, none is generated based on the isntance counter
+        """
         if not hasattr(self, '_name'):
             self._name = 'Rotator{:03d}'.format(RotatorBase._instance_name_cntr)
             RotatorBase._instance_name_cntr += 1
@@ -192,6 +186,9 @@ class RotatorBase(object):
 
 
     def azel_err(self, az, el):
+        """
+        Returns the error in degrees between the current pointing and a specified az/el
+        """
 
         def az_dist(az1, az2):
             az1 = az1%360
@@ -223,7 +220,8 @@ class RotatorBase(object):
 
     def in_pos(self, az = None, el = None):
         """
-        Check if antenna is in position
+        Check if antenna is in position. Optionally a different az,el can be supplied. If so
+        the position check will be done against that instead of the currently commanded position.
 
         Returns:
             True if antenna is in position, False otherwise
@@ -255,18 +253,20 @@ class RotatorBase(object):
         amount of movements while keeping the off-pointing within the antenna
         beamwidth
 
-        Note: this method does *not* interpolate, it just uses nearest neighbour
-              so pdat must be at sufficient time resolution.
+        .. note::
+            This method does *not* interpolate, it just uses nearest neighbour
+            so pdat must be at sufficient time resolution.
 
 
         Also transform antenna pointing vectors in such a way that the antenna will track continously  throughout
         the pass. We do this by checking if the antenna ever needs to enter both the NE and NW quarters, and
         if so, depending on the antenna rotator capabilities we can use one of 2 methods to achieve a continous
-        (up to 3 quadrant) track.
-          * flipover:         We move the antenna in the 90 -- 180 degree extended elevation range
-          * extended_azimuth: We move the antenna in the 360 -- 540 degree extended azimuth range
+        (up to 3 quadrant) track:
 
-        4 quadrant tracking is not currently supported. If the trajectory enters 4 quadrants, or if the antenna
+          :flipover:         We move the antenna in the 90 -- 180 degree extended elevation range
+          :extended_azimuth: We move the antenna in the 360 -- 540 degree extended azimuth range
+
+        4 quadrant tracking is *not* currently supported. If the trajectory enters 4 quadrants, or if the antenna
         capabilities do not meet the requirements for flipover or extended_azimuth, then the antenna will be commanded
         in the "normal" 0-360 az and 0-90 el range and there may be discontinuities.
 
@@ -364,16 +364,27 @@ class RotatorBase(object):
     ####################
 
     def get_azel(self):
+        """
+        Get current az, el pointing (shall be overloaded)
+        """
         raise Error("Rotator.get_azel was called but has not been implemented")
 
     def set_azel(self, az, el, block):
+        """
+        Set new az, el pointing (shall be overloaded)
+        """
         raise Error("Rotator.set_azel was called but has not been implemented")
 
-    def get_azel_rate(self):
-        raise Error("Rotator.get_azel_rate was called but has not been implemented")
 
-    def set_azel_rate(self, az, el, block):
-        raise Error("Rotator.set_azel_rate was called but has not been implemented")
+    #
+    # The below methods may be used in the future.
+    #
+
+    # def get_azel_rate(self):
+    #     raise Error("Rotator.get_azel_rate was called but has not been implemented")
+
+    # def set_azel_rate(self, az, el, block):
+    #     raise Error("Rotator.set_azel_rate was called but has not been implemented")
 
 
 
@@ -385,6 +396,9 @@ class RotatorBase(object):
 
     @property
     def azel(self):
+        """
+        Return / Set current (azimuth, elevation)
+        """
         return self.get_azel()
 
     @azel.setter
@@ -393,6 +407,9 @@ class RotatorBase(object):
 
     @property
     def az(self):
+        """
+        Return / Set current azimuth
+        """
         return self.get_azel()[0]
 
     @az.setter
@@ -402,6 +419,9 @@ class RotatorBase(object):
 
     @property
     def el(self):
+        """
+        Return / Set current elevation
+        """
         return self.get_azel()[1]
 
     @el.setter
@@ -411,6 +431,10 @@ class RotatorBase(object):
 
     @property
     def cmd_az(self):
+        """
+        Return / Set commanded azimuth
+        """
+
         if not hasattr(self, '_cmd_az'):
             return 0
         else:
@@ -422,6 +446,9 @@ class RotatorBase(object):
 
     @property
     def cmd_el(self):
+        """
+        Return / Set commanded elevation
+        """
         if not hasattr(self, '_cmd_el'):
             return 0
         else:
@@ -461,7 +488,11 @@ class RotatorBase(object):
 
 class DummyRotator(RotatorBase):
     """
-    A dummy class that responds like the rotator but does nothing
+    A dummy class that responds like the rotator but does nothing. 
+    
+    It is used internally by the GroundStation class if the user tries to interact
+    with it without having a rotator connected. For example when testing direct connection
+    to a flatsat. But can also be instantiated directly if required.
     """
 
     def get_azel(self):
@@ -486,20 +517,12 @@ class GS232B(RotatorBase):
     See https://pythonhosted.org/pyserial/url_handlers.html for the syntax.
 
 
-    Available configuration parameters are all of RotatorBase as well as the following additional parameters
+    Available configuration parameters are all of RotatorBase as well as the following additional parameters::
 
-    ======================= ===================
-    Parameter               Description
-    ----------------------- -------------------
-    STALE_TIME              Time before azel reading is considered stale (default = 3 seconds)
-    SERIAL_PORT_TIMEOUT     Timeout delay waiting for serial port comms (default = 0.1 seconds)
-    ROT_SETTLETIME_GET      Delay after getting position from rotator (default = 0 seconds)
-    ROT_SETTLETIME_SET      Delay after setting position from rotator (default = 0.75 seconds)
-    SET_DT                  Time interval to wait before re-issuing a position command (default = 10 seconds, ignored if SET_REGULARLY = False)
-    GET_DT                  Time delay to wait between consecutive attempts to get position (default = 0 seconds)
-    SET_REGULARLY           Whether to continuously issue set commands to rotators, or only on request. (Default=True)
-    ======================= ===================
+    STALE_TIME, SERIAL_PORT_TIMEOUT, ROT_SETTLETIME_GET, ROT_SETTLETIME_SET, SET_DT, GET_DT, SET_REGULARLY
 
+    See attribute help for details about these.
+    
     """
 
 
@@ -510,28 +533,28 @@ class GS232B(RotatorBase):
     ############
 
 
-    #
-    # Within STALE_TIME, if no reply can be obtained from rotator return the last valid reply
-    #
+    #:
+    #: Time before azel reading is considered stale
+    #:
     STALE_TIME = 3
 
-    #
-    # Allowed time to wait for a byte from the serial port
-    #
+    #:
+    #: Timeout delay waiting for serial port comms
+    #:
     SERIAL_PORT_TIMEOUT = .1
 
 
     # SETTLETIME is a delay the system gives the rotator controller before trying to send any more commands
-    ROT_SETTLETIME_GET = 0.0
-    ROT_SETTLETIME_SET = 0.75
+    ROT_SETTLETIME_GET = 0.0    #: Delay after getting position from rotator
+    ROT_SETTLETIME_SET = 0.75   #: Delay after setting position from rotator
 
-    # Time interval at which position is attempted to be set again
+    #: Time interval to wait before re-issuing a position command
     SET_DT = 10
 
-    # Maximum time interval at which position is polled (if smaller than _POLL_DT, _POLL_DT will win)
+    #: Time delay to wait between consecutive attempts to get position (if smaller than _POLL_DT (default 0.1), _POLL_DT will win)
     GET_DT  = 0
 
-    # set to false to only set position when set_azel is called explicitly.
+    #: Whether to continuously issue set commands to rotators, or only on request. 
     SET_REGULARLY = True
 
 
