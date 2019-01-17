@@ -38,8 +38,63 @@ libgs.monitoring
 Monitoring is a stand-alone module that allows monitoring of telemetry points while
 attempting to have a minimal impact on the execution of the rest of the code.
 
-It implements a simple pythonic syntax for the creation of monitoring points.
+It implements a simple pythonic syntax for the creation of monitoring points. To use;
 
+1. Create a monitor
+
+>>> from libgs.monitoring import Monitor
+>>> mon = Monitor()
+
+2. Define a function that returns the monitored value, 
+and decorate it with mon.monitor(). 
+
+For example, to monitor the current time:
+
+>>> from datetime import datetime
+>>> @mon.monitor()
+>>> def current_time():
+>>>    return datetime.utcnow()
+
+3. Start the monitor
+
+>>> mon.start()
+
+And that's it. The current time is now monitored at the default update interval 
+under a monitor point called "current_time". 
+You can view the state of the monitor by printing it::
+
+    >>> print(mon)
+    Monitor ()  -- running
+    Name                          Value               Alert     Last polled   
+    ----------------------------- ------------------- --------- ---------------
+    .current_time                 2018-06-21 00:39:07           0.7
+
+
+More complicated monitoring functions can easily be created by specifying the point
+value in the decorator. See :meth:`Monitor.monitor` for syntax. You can also change
+the update interval etc...
+
+The constructor also takes some arguments to customise its default behaviour. See :class:`Monitor`.
+
+You are able to add callbacks whenever a monitored value is updated. This is useful
+if you are displaying the data on a dashboard or updating a database. See :meth:`Monitor.add_callback`.
+
+Finally, you can set alert levels by returning an Alert object rather than a value from
+your monitoring function. This module defines :class:`GreenAlert`, :class:`OrangeAlert`, 
+:class:`RedAlert`, and :class:`CriticalAlert`. You are welcome to customise or make others 
+by deriving a new subclass from :class:`Alert`.
+
+The following example monitoring function gets the cpu usage every 2 seconds, and
+marks the alert as Red if it is above 50%:
+
+>>> @mon.monitor(dt = 2)
+>>> def cpu_usage():
+>>>     usage = psutil.cpu_percent(interval=1)
+>>>     if usage > 50:
+>>>         return RedAlert(usage)
+>>>     else:
+>>>         return GreenAlert(usage)
+ 
 """
 
 import time
@@ -67,6 +122,10 @@ log.addHandler(logging.NullHandler())
 #
 ############################################
 class Alert(object):
+    """
+    Base class for Alerts. Any derived class must set 
+    the alertstr and alertcode properties.
+    """
 
     def __init__(self, val):
         self.val = val
@@ -103,6 +162,9 @@ class NoAlert(Alert):
 
 
 class MonitorItem(tuple):
+    """
+    A monitored item.
+    """
     _fields = ('name', 'value', 'alert', 'parent', 'age')
 
     def __new__(cls, item):
@@ -150,7 +212,31 @@ class MonitorItem(tuple):
 
 class Monitor(object):
     """
-    Class to provide functionality for monitoring
+    Class to provide functionality for monitoring.
+
+    The monitor class works by spawning a threadpool in which it will call a number
+    of user-defined monitoring functions. Every tick, it will check the list
+    of monitoring functions to find the ones that are due and then invoke them in the
+    threadpool. It then *immediately proceeds to the next tick*.
+
+    In other words, monitoring functions are free to do whatever they want, including
+    to block for a while since while it is running the Monitor class will just proceed
+    with executing other monitoring functions (up to the limit of the workers in the threadpool).
+
+    Monitoring functions are added to the class instance preferably using the 
+    :meth:`monitor` decorator. 
+    
+    It is possible to add callbacks to monitor points that are invoked every time the value
+    is updated.
+
+    It is also possible to add a single tick callback when creating the Monitor object. Take
+    care when doing this as it is invoked at the end of every tick, and the next tick will not
+    execute before it completes. Therefore care should be taken to ensure tick callbacks return very
+    fast.
+
+    This restriction does not apply to monitor callbacks as they are executed in the Threadpool with
+    the call to the monitor function and will therefore not hold up the Monitor overall.
+
     """
 
 
@@ -213,6 +299,9 @@ class Monitor(object):
 
     @property
     def alertcode(self):
+        """
+        The current worst alert level.
+        """
         return max(self._exec_map.alert)
 
 
@@ -221,9 +310,13 @@ class Monitor(object):
                         parent=None):
         """
         A parent monitor is not really a monitor. It is merely the product
-        of its children and exists for visualisation purposes only.
+        of its children and exists for visualisation/grouping purposes only.
 
-        Its alert status will always be the worst of its children
+        Its alert status will always be the worst of its children.
+
+        Args:
+            name (str)              : The name of the parent to register
+            parent (str(optional))  : The parent of the parent you are registering
 
         """
 
@@ -235,25 +328,25 @@ class Monitor(object):
 
     def add_callback(self, callable):
         """
-        Add a callable to be invoked every N times a value is polled.
+        Add a callable to be invoked every time a value is polled. Multiple callbacks can
+        be added.
 
         .. note::
-
            The callback will be executed in the same sub-thread that does the polling
 
-        The prototype of the callable should be
+        The prototype of the callable should be::
+
             some_function(point_name, tstamp, exc, ret)
 
-        where
+        where:
+
             * point_name is the name of the monitor point that has been polled
             * tstamp is the unix timestamp at which the monitor function returned a value (obtained wiht time.time()),
             * exc is None if no exception happened, otherwise it is set to the exception that occurred.
-            * ret are the return values. Will always be an Alert object.
+            * ret are the return values. Will always be an :class:`Alert` object.
 
         Args:
             callable: The callable
-
-        Returns:
 
         """
         self._callbacks.append(callable)
@@ -262,17 +355,15 @@ class Monitor(object):
     def to_gen_in_executor(self, fn, point_names, *args, **kwargs):
         """
         This decorator will take any function and turn it into a generator
-        that always returns immediately after calls to next().
+        appropriately formatted for adding using :meth:`.register_monitor`.
 
         The call to fn is being delegated to an executor, and while it is not
         done, calls to next() will return None, otherwise it will return a tuple containging
-            * the timestamp the data the return
-        value of fn
+            * The timestamp the data the return value of fn
+            * Any Exceptions that occurred
+            * The return value
 
-        Args:
-            fn:
-
-        Returns:
+        This is the format that is required in order to add it to the Monitor.
 
         """
 
@@ -344,12 +435,9 @@ class Monitor(object):
     #############
     def callback(self):
         """
-        Decorator to convert a function definition to an IntervalCallback instance and add it to the
-        monitor's callback list.
+        Decorator that can be applied to a function to automatically add it to the monitor
         """
 
-
-        # Otherwise convert it to an IntervalCallback instance
         def decorator(fn):
             self.add_callback(fn)
             return fn
@@ -361,16 +449,34 @@ class Monitor(object):
         Creates a decorator that can be applied to any function to add it to be monitored.
 
         It will do two things:
-            1) convert the function to a generator in which the function call is run in an executor, so that
+
+            1. Convert the function to a generator in which the function call is run in an executor, so that
                any call to the generators next() function will return immeditately and not hold up execution. If
                the function has not finished the generator will return None. If it has completed, it will return
                the value as well as a timestamp and any potential exception in the format required for the monitoring
                loop.
-            2) add the function to the Monitor class  polling schedule.
+            2. Add the function to the Monitor class polling schedule.
+
+        The decorator can create multiple monitor points from a single callable (that returns a tuple) by
+        specifying point as a tuple.
+        
+        Please see :meth:`.register_monitor` for the full list of the remaining arguments that can be applied.
+        *args and **kwargs can be anything accepted by :meth:`.register_monitor` except name, gen or dependents.
+
+        Example: 
+        
+            register 3 monitoring points from a function that retuns random values at an interval
+            of once every 10 seconds, grouped under the heading Test:
+
+            >>> @mon.monitor(point=("Point 1", "Point 2", "Point 3"), dt=10, parent="Test")
+            >>> def monitoring_function():
+            >>>    return random.random(), random.random(), random.random()
+
 
         Args:
-            point:           The name of the monitor point. If omitted it will use the function name
-            *args, **kwargs: Also accepts all the arguments of register_monitor()
+            point:           The name of the monitor point. If omitted it will use the function name. 
+                             Can also be a tuple if function monitors several variables.
+            *args, **kwargs: Also accepts all the arguments of :class:`.register_monitor`
 
         Returns:
             Decorator
@@ -413,7 +519,7 @@ class Monitor(object):
         This is a low level function to register a monitor generator with the monitor class.
 
         The format of the generator is quite specific, and it should therefore ideally have been created from
-        a callable using the to_gen_in_executor() method. Using this method will ensure the generator returns
+        a callable using the :meth:`.to_gen_in_executor` method. Using this method will ensure the generator returns
         values in the right format for the monitor class, and that it never blocks.
 
 
@@ -421,12 +527,13 @@ class Monitor(object):
             name:           The name of the monitor point
             gen:            The monitor generator (* see description above)
             dt:             The time interval in which to poll the monitored (dt = None -> one shot)
-            parent:         Assign a parent to the monitored (For grouping purposes only,
+            parent:         Assign a parent to the monitored (For grouping purposes only)
+                            If the parent does not exist, it will be created.
             loglvl_values:  If not None, any change in value will be logged with the logging level specified.
             loglvl_alerts:  If not None, a change in alert level may be logged with the logging level specified
-            logthr_alerts:  The threshold for the alertcode above by which to log. Default = RedAlert.alertcode
+            logthr_alerts:  The threshold for the alertcode above by which to log. Default = :attr:`RedAlert.alertcode`
             dependents:     Other monitors to update from same generator
-            alert_exc:      Alert to set in case an exception is raised in monitor function. Default = NoAlert
+            alert_exc:      Alert to set in case an exception is raised in monitor function. Default = :class:`NoAlert`
 
         """
 
@@ -475,6 +582,12 @@ class Monitor(object):
 
 
     def start(self, subprocess = False):
+        """
+        Start polling loop.
+
+        Args:
+            subprocess (bool (optional)): Start the polling loop in a subprocess rather than a thread.
+        """
         if self._pthr is not None:
             return
 
@@ -488,6 +601,10 @@ class Monitor(object):
         self._pthr.start()
 
     def stop(self):
+        """
+        Stop the polling loop.
+
+        """
         if self._pthr is None:
             return
 
@@ -653,6 +770,15 @@ class Monitor(object):
 
 
     def itertree(self, parent=None):
+        """
+        Iterator that will iterate through the full tree of monitor points, or 
+        alternatively just a specific branch by specifying the parent of that branch.
+
+        >>> for item in mon.itertree():
+        >>>    print(item)
+
+
+        """
         if parent is None:
             top = self._exec_map['name'][pd.isnull(self._exec_map.parent)].tolist()
             top += [k for k, v in self._parents.items() if v['parent'] is None]
@@ -679,11 +805,19 @@ class Monitor(object):
         names is more descriptive. This method is the same as .names()
 
         Returns:
+            list of monitor names
 
         """
         return list(self._exec_map['name'])
 
     def names(self):
+        """
+
+        Returns:
+            list of monitor names
+
+        """
+
         return self.keys()
 
 
