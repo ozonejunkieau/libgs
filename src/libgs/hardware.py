@@ -59,7 +59,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import serial
 import time
-
+from functools import wraps
 
 import logging
 log = logging.getLogger('libgs-log')
@@ -152,6 +152,7 @@ class RotatorBase(object):
     @classmethod
     def _assure_azel_in_range(cls, fn):
 
+        @wraps(fn)
         def wrapped(self, az, el, *args, **kwargs):
             if az < self.MIN_AZ:
                 log.debug("commanded az = {:.1f} deg < MIN_AZ, using MIN_AZ = {:.1f} deg".format(az, self.MIN_AZ))
@@ -174,6 +175,9 @@ class RotatorBase(object):
             self.cmd_el = el
 
             return fn(self, az, el, *args, **kwargs)
+
+        wrapped.__doc__ = fn.__doc__
+        wrapped.__name__ = fn.__name__
 
         return wrapped
 
@@ -395,13 +399,18 @@ class RotatorBase(object):
 
     def get_azel(self):
         """
-        Get current az, el pointing (shall be overloaded)
+        Get current az, el pointing
         """
         raise Error("Rotator.get_azel was called but has not been implemented")
 
     def set_azel(self, az, el, block):
         """
-        Set new az, el pointing (shall be overloaded)
+        Set new az, el pointing
+
+        Args:
+            az (float):     Azimuth angle
+            el (float):     Elevation angle
+            block (bool):   Block until positioning complete
         """
         raise Error("Rotator.set_azel was called but has not been implemented")
 
@@ -427,7 +436,7 @@ class RotatorBase(object):
     @property
     def azel(self):
         """
-        Return / Set current (azimuth, elevation)
+        Return / Set current (azimuth, elevation). Blocks when setting.
         """
         return self.get_azel()
 
@@ -487,8 +496,6 @@ class RotatorBase(object):
     @cmd_el.setter
     def cmd_el(self, el):
         self._cmd_el = el
-
-
 
 class DummyRotator(RotatorBase):
     """
@@ -1201,15 +1208,13 @@ class RadioBase(object):
     
     def send_bytes(self):
         """
-        send_bytes should send a byte sequence to the radio for modulation
-        and transmission. (Shall be overloaded)
+        Send a byte sequence to the radio for modulation and transmission. 
         """
         raise Error("Radio.send_bytes has not been implemented")
         
     def set_recv_callback(self, callable):
         """
-        set_recv_callback should set a callable to be invoked when radio 
-        receives a packet.  (Shall be overloaded)
+        Set a callable to be invoked when radio receives a packet.  
 
         Args:
             callable (callable) : The callback function
@@ -1219,13 +1224,13 @@ class RadioBase(object):
 
     def get_spectrum(self, old=False):
         """
-        get_spectrum should return the latest spectrum from the radio as well
+        Return the latest spectrum from the radio as well
         as an associated frequency vecgor
         
         >>> fvec, famp = get_spectrum()
 
         Args:
-            old (bool) : If False, get_spectrum shall only return a spectrum if it has changed.
+            old (bool) : If False, only return a spectrum if it has changed.
 
         Returns:
             fvec (list(float)) : Frequency vector
@@ -1236,13 +1241,13 @@ class RadioBase(object):
         
     def get_range_rate(self):
         """
-        get_range_rate should return the currently set range_rate (Shall be overloaded)
+        Return the currently set range_rate 
         """
         raise Error("Radio.get_range_rate was called but has not been implemented")
 
     def set_range_rate(self, range_rate):
         """
-        set_range_rate should set frequency adjustment for a specific range_rate (Shall be overloaded)
+        Set frequency adjustment for a specific range_rate
         """
         raise Error("Radio.set_range_rate was called but has not been implemented")
 
@@ -1534,22 +1539,6 @@ class GR_XMLRPCRadio(RadioBase):
 
         
     def get_spectrum(self, old=True):
-        """
-        Overloaded from :meth:`RadioBase.get_spectrum`
-
-        get_spectrum returns the latest spectrum from the radio as well
-        as an associated frequency vecgor
-        
-        >>> fvec, famp = get_spectrum()
-
-        Args:
-            old (bool) : If False, get_spectrum  only return a spectrum if it has changed.
-
-        Returns:
-            fvec (list(float)) : Frequency vector
-            famp (list(float)) : Associated amplitudes (in dBm)
-
-        """
         y = self._get_IQ(old)[-self._fftsize:]
 
         if len(y) < self._fftsize:
@@ -1563,16 +1552,10 @@ class GR_XMLRPCRadio(RadioBase):
         return x, y
     
     def set_range_rate(self, range_rate):
-        """
-        Overloaded from :meth:`RadioBase.set_range_rate`
-        """
         log.debug("Setting range_rate for radio %s to %.0f"%(self.name, range_rate))
         return self._rpc_set('range_rate', range_rate)
     
     def get_range_rate(self):
-        """
-        Overloaded from :meth:`RadioBase.get_range_rate`
-        """
         return self._rpc_get('range_rate')
 
 
