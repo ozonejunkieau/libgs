@@ -66,6 +66,7 @@ log = logging.getLogger('libgs-log')
 log.addHandler(logging.NullHandler())
 
 
+
 class RotatorBase(object):
     """
     Base class for any rotator hardware interface
@@ -84,9 +85,9 @@ class RotatorBase(object):
     # to suit the rotator type
     #
 
-    #: Stowed position
-    STOWED_AZ = Defaults.ROTATOR_STOWED_AZ
-    STOWED_EL = Defaults.ROTATOR_STOWED_EL
+    # Stowed positions
+    STOWED_AZ = Defaults.ROTATOR_STOWED_AZ #: Stowed azimuth position
+    STOWED_EL = Defaults.ROTATOR_STOWED_EL #: Stowed elevation position
 
     #: Antenna beamwidth
     BEAMWIDTH = Defaults.ROTATOR_ANTENNA_BEAMWIDTH
@@ -148,7 +149,36 @@ class RotatorBase(object):
     #
     ####################
 
+    @classmethod
+    def _assure_azel_in_range(cls, fn):
 
+        def wrapped(self, az, el, *args, **kwargs):
+            if az < self.MIN_AZ:
+                log.debug("commanded az = {:.1f} deg < MIN_AZ, using MIN_AZ = {:.1f} deg".format(az, self.MIN_AZ))
+                az = self.MIN_AZ
+
+            if az > self.MAX_AZ:
+                log.debug("commanded az = {:.1f} deg > MAX_AZ, using MAX_AZ = {:.1f} deg".format(az, self.MAX_AZ))
+                az = self.MAX_AZ
+
+            if el < self.MIN_EL:
+                log.debug("commanded el = {:.1f} deg < MIN_EL, using MIN_EL = {:.1f} deg".format(el, self.MIN_EL))
+                el = self.MIN_EL
+
+            if el > self.MAX_EL:
+                log.debug("commanded el = {:.1f} deg > MAX_EL, using MAX_EL = {:.1f} deg".format(el, self.MIN_EL))
+                el = self.MAX_EL
+
+            # Also use this wrapper to ensure cmd_az and cmd_el gets set.
+            self.cmd_az = az
+            self.cmd_el = el
+
+            return fn(self, az, el, *args, **kwargs)
+
+        return wrapped
+
+
+        
     def _wait_for_in_pos(self, az = None, el = None):
         t0 = time.time()
         last_print_t = t0
@@ -458,33 +488,7 @@ class RotatorBase(object):
     def cmd_el(self, el):
         self._cmd_el = el
 
-    @classmethod
-    def _assure_azel_in_range(cls, fn):
 
-        def wrapped(self, az, el, *args, **kwargs):
-            if az < self.MIN_AZ:
-                log.debug("commanded az = {:.1f} deg < MIN_AZ, using MIN_AZ = {:.1f} deg".format(az, self.MIN_AZ))
-                az = self.MIN_AZ
-
-            if az > self.MAX_AZ:
-                log.debug("commanded az = {:.1f} deg > MAX_AZ, using MAX_AZ = {:.1f} deg".format(az, self.MAX_AZ))
-                az = self.MAX_AZ
-
-            if el < self.MIN_EL:
-                log.debug("commanded el = {:.1f} deg < MIN_EL, using MIN_EL = {:.1f} deg".format(el, self.MIN_EL))
-                el = self.MIN_EL
-
-            if el > self.MAX_EL:
-                log.debug("commanded el = {:.1f} deg > MAX_EL, using MAX_EL = {:.1f} deg".format(el, self.MIN_EL))
-                el = self.MAX_EL
-
-            # Also use this wrapper to ensure cmd_az and cmd_el gets set.
-            self.cmd_az = az
-            self.cmd_el = el
-
-            return fn(self, az, el, *args, **kwargs)
-
-        return wrapped
 
 class DummyRotator(RotatorBase):
     """
@@ -519,10 +523,10 @@ class GS232B(RotatorBase):
 
     Available configuration parameters are all of RotatorBase as well as the following additional parameters::
 
-    STALE_TIME, SERIAL_PORT_TIMEOUT, ROT_SETTLETIME_GET, ROT_SETTLETIME_SET, SET_DT, GET_DT, SET_REGULARLY
+        STALE_TIME, SERIAL_PORT_TIMEOUT, ROT_SETTLETIME_GET, ROT_SETTLETIME_SET, SET_DT, GET_DT, SET_REGULARLY
 
     See attribute help for details about these.
-    
+
     """
 
 
@@ -839,7 +843,7 @@ class GS232B(RotatorBase):
             self.err_stale = None
             return self._cur_az, self._cur_el
 
-    @RotatorBase._assure_azel_in_range
+    # @_assure_azel_in_range
     def set_azel(self, az, el, block=False):
         self.set_now = True
 
@@ -1141,6 +1145,10 @@ class RotCtld(RotatorBase):
 # For now we have made Rotator an alias for RotCtld
 # TODO: Remove. This is for backwards compatability only
 class Rotator(RotCtld):
+    """
+    .. warning::
+       DEPRECATED. Available for backwards compatability only.
+    """
     pass
 
 
@@ -1153,9 +1161,9 @@ class RadioBase(object):
     _fftsize = 1024
 
     # Exceptions that happen during range rate setting /getting will not be raised.
-    # but they will be stored here so that a monitor can poll them if desired.
-    err_range_rate_set = None
-    err_range_rate_get = None
+    # but they will be stored here so that a monitor can poll them if desired.    
+    err_range_rate_set = None #: Exception during last attempt at setting range rate (None if no exception occurred)
+    err_range_rate_get = None #: Exception during last attempt at getting range rate (None if no exception occurred)
 
     # Instance counter (for unnamed radios)
     _instance_name_cntr = 0
@@ -1169,6 +1177,10 @@ class RadioBase(object):
     #####
     @property
     def name(self):
+        """
+        Getting/setting the radio name. If no name is supplied, 
+        one is generated based on the isntance counter            
+        """
         if not hasattr(self, '_name'):
             self._name = 'Radio{:03d}'.format(RadioBase._instance_name_cntr)
             RadioBase._instance_name_cntr += 1
@@ -1190,30 +1202,47 @@ class RadioBase(object):
     def send_bytes(self):
         """
         send_bytes should send a byte sequence to the radio for modulation
-        and transmission
+        and transmission. (Shall be overloaded)
         """
         raise Error("Radio.send_bytes has not been implemented")
         
     def set_recv_callback(self, callable):
         """
-        det_recv_callback should set a callable to be invoked when radio 
-        receives a packet.
+        set_recv_callback should set a callable to be invoked when radio 
+        receives a packet.  (Shall be overloaded)
+
+        Args:
+            callable (callable) : The callback function
         """
         raise Error("set_recv_callback has not been implemented")
 
 
     def get_spectrum(self, old=False):
+        """
+        get_spectrum should return the latest spectrum from the radio as well
+        as an associated frequency vecgor
+        
+        >>> fvec, famp = get_spectrum()
+
+        Args:
+            old (bool) : If False, get_spectrum shall only return a spectrum if it has changed.
+
+        Returns:
+            fvec (list(float)) : Frequency vector
+            famp (list(float)) : Associated amplitudes (in dBm)
+
+        """
         raise Error("Radio.get_spectrum was called but has not been implemented")
         
     def get_range_rate(self):
         """
-        get_range_rate shoudl return the currently set range_rate
+        get_range_rate should return the currently set range_rate (Shall be overloaded)
         """
         raise Error("Radio.get_range_rate was called but has not been implemented")
 
     def set_range_rate(self, range_rate):
         """
-        set_range_rate should set frequency adjustment for a specific range_rate
+        set_range_rate should set frequency adjustment for a specific range_rate (Shall be overloaded)
         """
         raise Error("Radio.set_range_rate was called but has not been implemented")
 
@@ -1225,6 +1254,12 @@ class RadioBase(object):
     ###########
     @property
     def range_rate(self):
+        """
+        Property for getting/setting range_range using the :meth:`.get_range_rate`/:meth:`.set_range_rate` methods while
+        also capturing any exception and storing it in :attr:`.err_range_rate`.
+
+        This should be the primary way of getting or setting rangerate.
+        """
         try:
             rr =  self.get_range_rate()
             self.err_range_rate_get = None
@@ -1255,7 +1290,10 @@ class RadioBase(object):
             future.abort() #<--- note non-standard future call
             
             Args:
-               dt = rate at which to record the spectra
+               dt (float)   : time interval (in seconds) at which to record spectra
+               N  (int)     : Max number of spectra to record.
+               fdec (int)   : Decimation factor
+               add_zeros (bool) : Fill incomplete data with zeroes
             """
             
             abort = threading.Event()
@@ -1356,6 +1394,7 @@ class GR_XMLRPCRadio(RadioBase):
     the range_rate.
     
     The flowgraph therefore needs to include variables for
+
       * range rate (in m/s)
       * centre frequency (in Hz)
       * bandwidth (in Hz)
@@ -1376,11 +1415,13 @@ class GR_XMLRPCRadio(RadioBase):
                  connect=True):
         """
         Args:
-            name (string)    : A descriptive name for the radio
-            stream (string)  : The IP:PORT on which to listen for published IQ samples
-            rpcaddr (string) : The RPC address (in format http://ip:port) to connect the XMLRPC proxy to
-            rpc_varmap       : A dict mapping between freq, sample_rate and range_rate to whatever
+            name (str)       : A descriptive name for the radio
+            stream (str)     : The IP:PORT on which to listen for published IQ samples
+            rpcaddr (str)    : The RPC address (in format http://ip:port) to connect the XMLRPC proxy to
+            rpc_varmap (dict): A dict mapping between freq, sample_rate and range_rate to whatever
                                those variables are called in the Gnu Radio flowgraph.
+            iqbufflen (int)  : Number of IQ samples to keep in circular buffer (for spectrum generation)
+            connect (bool)   : If true connect immediately to Gnu Radio. Otherwise you need to call connect() separately.     
         """
                  
         
@@ -1494,11 +1535,20 @@ class GR_XMLRPCRadio(RadioBase):
         
     def get_spectrum(self, old=True):
         """
-        get_spectrum should return the latest spectrum from the radio as well
+        Overloaded from :meth:`RadioBase.get_spectrum`
+
+        get_spectrum returns the latest spectrum from the radio as well
         as an associated frequency vecgor
         
-        fvec, famp = get_spectrum()
-        
+        >>> fvec, famp = get_spectrum()
+
+        Args:
+            old (bool) : If False, get_spectrum  only return a spectrum if it has changed.
+
+        Returns:
+            fvec (list(float)) : Frequency vector
+            famp (list(float)) : Associated amplitudes (in dBm)
+
         """
         y = self._get_IQ(old)[-self._fftsize:]
 
@@ -1513,10 +1563,16 @@ class GR_XMLRPCRadio(RadioBase):
         return x, y
     
     def set_range_rate(self, range_rate):
+        """
+        Overloaded from :meth:`RadioBase.set_range_rate`
+        """
         log.debug("Setting range_rate for radio %s to %.0f"%(self.name, range_rate))
         return self._rpc_set('range_rate', range_rate)
     
     def get_range_rate(self):
+        """
+        Overloaded from :meth:`RadioBase.get_range_rate`
+        """
         return self._rpc_get('range_rate')
 
 
@@ -1593,6 +1649,10 @@ class GR_XMLRPCRadio(RadioBase):
     
 
     def connect(self):
+        """
+        Connect to Gnu Radio ZMQ socket to receive IQ.
+        """
+
         self._context = zmq.Context()
         self._sock_iq = self._context.socket(zmq.SUB)
         self._sock_iq.connect('tcp://{}:{}'.format(self._iqaddr, self._iqport))
@@ -1604,6 +1664,9 @@ class GR_XMLRPCRadio(RadioBase):
         self._pthr_iq.start()
 
     def disconnect(self):
+        """
+        Disconnect from GNU radio.
+        """
         self._stop = True
         if hasattr(self, '_pthr_iq'):
             self._pthr_iq.join()
