@@ -35,6 +35,20 @@ libgs.hardware
 :date:   Fri Jan 12 13:17:51 2018
 :author: kjetil
 
+This module contains base classes for interfacing with key hardware components:
+
+* Rotators: :class:`RotatorBase`
+* Radios:   :class:`RadioBase`
+
+As well as implementations for some common Rotator and Radios.
+
+Implementing a new hardware interface
+-------------------------------------
+
+Derive from the appropriate base class and implement the interface methods. 
+See :class:`RotatorBase` and :class:`RadioBase` for details.
+
+
 """
 
 
@@ -71,12 +85,22 @@ class RotatorBase(object):
     """
     Base class for any rotator hardware interface
 
-    The following configuration parameters can be changed by any derived class in order to appropriately configure
-    the rotator::
+    Any rotator interface must derive from this class and implement the interface methods:
 
-        STOWED_AZ, STOWED_EL, BEAMWIDTH, MAX_AZ, MIN_AZ, MAX_EL, MIN_EL, SLEW_TIMEOUT
+    * :meth:`.get_azel`
+    * :meth:`.set_azel`
+
+    Additionally you should set the name attribute to something descriptive, and change the configuration attribute parameters
+    as appropriate:
     
-    See attribute help below for details about them.
+    * :attr:`STOWED_AZ`
+    * :attr:`STOWED_EL`
+    * :attr:`BEAMWIDTH`
+    * :attr:`MAX_AZ`
+    * :attr:`MIN_AZ`
+    * :attr:`MAX_EL`
+    * :attr:`MIN_EL`
+    * :attr:`SLEW_TIMEOUT`
 
     """
 
@@ -1163,6 +1187,26 @@ class Rotator(RotCtld):
 class RadioBase(object):
     """
     Base class for Radio object.
+
+    Any radio interface must derive from this class and implement the interface methods:
+
+    * :meth:`.get_spectrum`
+    * :meth:`.get_range_rate`
+    * :meth:`.set_range_rate`
+
+    Additionally you should set the name attribute to something descriptive.
+
+    .. note::
+        It is best to interface with Radio objects thwough the :attr:`.range_rate` attribute
+        (which internally calls the abovementioned getters/setters. The reason is that it will properly
+        handle errors)
+
+    .. note::
+        Currently Radio objects are used to set/get the range_rate and get the spectral data
+        only. The :class:`~libgs.protocols.protocolbase.ProtocolBase` class must directly work out
+        its radio interface to perform its send_bytes and recv functions.
+
+
     """
     
     _fftsize = 1024
@@ -1186,7 +1230,7 @@ class RadioBase(object):
     def name(self):
         """
         Getting/setting the radio name. If no name is supplied, 
-        one is generated based on the isntance counter            
+        one is generated based on the instance counter            
         """
         if not hasattr(self, '_name'):
             self._name = 'Radio{:03d}'.format(RadioBase._instance_name_cntr)
@@ -1206,20 +1250,22 @@ class RadioBase(object):
     #
     ##############################################
     
-    def send_bytes(self):
-        """
-        Send a byte sequence to the radio for modulation and transmission. 
-        """
-        raise Error("Radio.send_bytes has not been implemented")
-        
-    def set_recv_callback(self, callable):
-        """
-        Set a callable to be invoked when radio receives a packet.  
+    # TODO: Currently send_bytes and set_recv_callback is done in the protocol class only, which
+    #       directly interfaces with the radio hardware. In the future it may go back through this
+    #       class and use send_byes and recv_callback.
 
-        Args:
-            callable (callable) : The callback function
-        """
-        raise Error("set_recv_callback has not been implemented")
+    # def send_bytes(self):
+    #     """
+    #     Send a byte sequence to the radio for modulation and transmission. 
+    #     """
+    #     raise Error("Radio.send_bytes has not been implemented")
+    # def set_recv_callback(self, callable):
+    #     """
+    #     Set a callable to be invoked when radio receives a packet. 
+    #     Args:
+    #         callable (callable) : The callback function
+    #     """
+    #     raise Error("set_recv_callback has not been implemented")
 
 
     def get_spectrum(self, old=False):

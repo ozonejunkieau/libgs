@@ -49,6 +49,7 @@ libgs module reference
     ~libgs.database
     ~libgs.emulators
     ~libgs.monitoring
+    ~libgs.protocols.protocolbase
 
 libgs_ops modules
 -----------------

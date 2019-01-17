@@ -34,6 +34,12 @@ libgs.monitoring
 
 :date:   Mon Sep 18 09:22:40 2017
 :author: Kjetil Wormnes
+
+Monitoring is a stand-alone module that allows monitoring of telemetry points while
+attempting to have a minimal impact on the execution of the rest of the code.
+
+It implements a simple pythonic syntax for the creation of monitoring points.
+
 """
 
 import time
