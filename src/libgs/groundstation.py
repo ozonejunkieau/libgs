@@ -591,12 +591,7 @@ class GSState(object):
         self._pthr_poll.start()
 
 
-        # The name of the class that is permitted to change properties
-        # Attempting to change from anywhere else will fail.
-        # To permit mutation from anywhere, delte this property
-        # To disable from anywhere, set it to None
-        self._mutable = 'GroundStation'
-
+  
         self.callbacks = dict()
         self._last_called = dict()
         self.callback_dt = dict()
@@ -630,27 +625,41 @@ class GSState(object):
                 if (dtype is not None) and not (value is None or (isinstance(value, dtype))):
                     raise Exception("Argument to %s must be %s, not %s"%(func.func_name, dtype, type(value)))
 
-                # Only allow mutation if called from the allowed class
-                # (the groundstation)
+                # Only allow mutation if called from the current class, or a class that overrides GroundStationBase
+                try:
+                    calling_class       = sys._getframe().f_back.f_locals['self'].__class__
+                    calling_class_name  = calling_class.__name__
 
-                if muting_class is None and hasattr(self, '_mutable'):
-                    mutable = self._mutable
-                else:
-                    mutable = muting_class
+                    # Boolean flag to control change permission
+                    allow_change = False
 
-                if mutable is not None:#hasattr(self, '_mutable'):
-                    try:
-                        calling_class = sys._getframe().f_back.f_locals['self'].__class__.__name__
-                        if (calling_class != 'GSState') and (calling_class != mutable):#self._mutable:
-                            raise Exception("Changing properties is not permitted")
-                    except KeyError:
-                        raise Exception("Changing properties is not permitted")
-                    except:
-                        raise
+                    # Check if the change is permitted based on the originating class being permitted.
+                    if not allow_change and not isinstance(calling_class, GroundStationBase) and not isinstance(calling_class, type(self)):
+                        # Not a valid class that the change is being made from.
+                        allow_change = False
+                    else:
+                        allow_change = True
 
+                    # Check if the change is permitted based on the originating class name being specifically allowed.
+                    if not allow_change and (calling_class_name != muting_class):
+                        # Not a matching class (by name) that change is being made from
+                        allow_change = False
+                    else:
+                        allow_change = True
 
+                    if not allow_change:
+                        raise Exception("Changing properties is not permitted from: %s." % calling_class_name)
 
+                except KeyError:
+                    # No 'self' key found in call indexing.
+                    raise Exception("Changing properties is not permitted based on call chain.")
+                except:
+                    raise
+
+                # Execute decorated function
                 func(self, value)
+
+                # Run callbacks and record time last called.
                 key = 'update_'+func.func_name
                 if key in self.callbacks.keys():
 
