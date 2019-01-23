@@ -634,8 +634,9 @@ class GSState(object):
                     allow_change = False
 
                     # Check if the change is permitted based on the originating class being permitted.
-                    if not allow_change and not isinstance(calling_class, GroundStationBase) and not isinstance(calling_class, type(self)):
+                    if not allow_change and not (isinstance(calling_class, GroundStationBase) or not isinstance(calling_class, type(self))):
                         # Not a valid class that the change is being made from.
+                        log.debug("Not a valid originating class.")
                         allow_change = False
                     else:
                         allow_change = True
@@ -643,6 +644,7 @@ class GSState(object):
                     # Check if the change is permitted based on the originating class name being specifically allowed.
                     if not allow_change and (calling_class_name != muting_class):
                         # Not a matching class (by name) that change is being made from
+                        log.debug("Not a valid originating class name.")
                         allow_change = False
                     else:
                         allow_change = True
